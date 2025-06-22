@@ -206,23 +206,24 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
     
     try:
         analysis_prompt = f"""
-        Analyze this transcript to find the 3 most viral-worthy clips for social media.
+        Your task is to act as an expert social media video editor. Analyze the following transcript and identify the 3 best clips that have the highest potential to go viral.
 
         Transcript:
         {transcript}
 
-        For each clip, you must identify:
-        1. A start timestamp (in MM:SS format)
-        2. An end timestamp (in MM:SS format)
-        3. A viral score (from 0-100) based on its potential to be engaging.
-        4. A brief, compelling reason why the clip is viral-worthy.
+        For each clip, provide:
+        1. Start Timestamp (MM:SS)
+        2. End Timestamp (MM:SS)
+        3. Viral Score (0-100): An estimate of its viral potential.
+        4. Reason: A compelling, one-sentence explanation of why this clip is viral-worthy.
 
-        CRITICAL REQUIREMENTS:
-        - Each clip's duration MUST be between 16 and 60 seconds.
-        - Each clip MUST end at a natural stopping point (end of a sentence or a complete thought). Do NOT cut off a speaker mid-sentence.
-        - Prioritize moments with strong emotional cues, surprising statements, or valuable insights.
+        --- CRITICAL SELECTION CRITERIA ---
+        1.  **Duration:** Each clip MUST be between 15 and 70 seconds.
+        2.  **Narrative Arc:** Each clip must feel like a complete story or a self-contained thought. It should have a clear beginning (a hook), a middle (the substance), and an end (a conclusion or punchline).
+        3.  **DO NOT CUT OFF SENTENCES:** Clips must end at a natural pause or the end of a thought. A clip ending mid-sentence is an automatic failure.
+        4.  **Content Quality:** Prioritize moments of high emotion, humor, controversy, strong opinions, or "aha!" moments. Look for the core message or the most impactful statement in the video.
 
-        Respond in this exact format, with each field on a new line:
+        Respond in this exact format:
         CLIP1_START: [MM:SS]
         CLIP1_END: [MM:SS]
         CLIP1_SCORE: [score]
@@ -255,7 +256,7 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
                 start_s = _to_seconds(start_match.group(1).strip())
                 end_s = _to_seconds(end_match.group(1).strip())
 
-                if start_s < end_s and 16 <= (end_s - start_s) <= 60:
+                if start_s < end_s and 15 <= (end_s - start_s) <= 70:
                     score = int(score_match.group(1))
                     reason = reason_match.group(1).strip() if reason_match else f"Clip {i} selected for engagement"
                     clips.append({
@@ -313,7 +314,7 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
             end_time = current_passage[-1]['end']
             duration = end_time - start_time
             
-            if 16 <= duration <= 60:
+            if 15 <= duration <= 70: # Looser duration for fallback
                 passages.append({
                     'text': passage_text,
                     'start': start_time,
@@ -322,18 +323,39 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
                 })
             current_passage = []
 
+    if not passages:
+        # If no punctuation-based passages, use time-based chunks
+        print("No punctuation-based passages found, creating time-based fallback chunks.")
+        for i in range(5): # Create 5 potential chunks
+            start_s = (i * (video_duration / 5)) + 5
+            end_s = start_s + 30
+            if end_s < video_duration:
+                 passages.append({
+                    'text': "Segment selected by time.",
+                    'start': start_s,
+                    'end': end_s,
+                    'duration': end_s - start_s
+                })
+
     # Score passages to find the best ones
     scored_passages = []
     for passage in passages:
-        score = 50  # Base score for any valid fallback
-        # Add points for ideal duration (25-45s)
-        if 25 <= passage['duration'] <= 45:
-            score += 15
-        # Add points for length of text
-        score += min(10, len(passage['text']) // 20) # 1 point per 20 chars, max 10
-        # Add points for questions
-        if '?' in passage['text']:
+        score = 40  # Base score for any valid fallback
+        duration = passage['duration']
+        
+        # Add points for ideal duration (25-60s)
+        if 25 <= duration <= 60:
+            score += 20
+        elif 15 <= duration < 25:
             score += 5
+        
+        # Add points for length of text
+        score += min(15, len(passage['text']) // 20) # 1 point per 20 chars, max 15
+        
+        # Add points for questions or keywords
+        if '?' in passage['text']: score += 10
+        if any(keyword in passage['text'].lower() for keyword in ['because', 'secret', 'finally', 'imagine']): score += 5
+
         scored_passages.append({'passage': passage, 'score': score})
     
     # Sort by score and pick top non-overlapping clips
@@ -355,7 +377,7 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
             final_clips.append({
                 'start_time': _from_seconds_to_hhmmss(start_t),
                 'end_time': _from_seconds_to_hhmmss(end_t),
-                'score': item['score'],
+                'score': min(item['score'], 99), # Cap score at 99
                 'reason': 'Intelligent fallback: A coherent segment was selected from the transcript.'
             })
             used_times.append((start_t, end_t))
@@ -394,90 +416,106 @@ def create_vertical_clip(input_video_path, start_time, end_time, output_filename
         print(f"Error creating vertical clip for {output_filename}: {e}")
         return None
 
-def process_video_task(url, task_id):
-    """Process video in background thread."""
+def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
+    """Process video in background thread for either AI or manual clipping."""
     video_path = None
     audio_path = None
     try:
-        # Download video
+        # Step 1: Get video info first to check duration
+        progress_tracker[task_id]['status'] = 'validating'
+        progress_tracker[task_id]['progress'] = 2
+        progress_tracker[task_id]['message'] = 'Analyzing video link...'
+        
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_duration = info.get('duration', 0)
+            video_title = info.get('title', 'Unknown Video')
+            video_id = info.get('id', 'unknown')
+
+        if video_duration > 3600: # 1 hour limit
+            progress_tracker[task_id]['status'] = 'error'
+            progress_tracker[task_id]['message'] = 'Error: Video is longer than 1 hour and cannot be processed.'
+            return
+
+        # Step 2: Download the video
         video_path = download_youtube_video(url, OUTPUT_DIR, task_id)
         if not video_path:
              progress_tracker[task_id]['status'] = 'error'
              progress_tracker[task_id]['message'] = 'Failed to download video.'
              return
 
-        # Extract audio
-        audio_path = extract_audio(video_path, task_id)
-        if not audio_path:
-            progress_tracker[task_id]['status'] = 'error'
-            progress_tracker[task_id]['message'] = 'Failed to extract audio.'
-            return
+        # --- AI Clipping Logic ---
+        if clip_mode == 'ai':
+            # Extract audio
+            audio_path = extract_audio(video_path, task_id)
+            if not audio_path:
+                progress_tracker[task_id]['status'] = 'error'
+                progress_tracker[task_id]['message'] = 'Failed to extract audio.'
+                return
+            
+            # Transcribe
+            transcript, language, is_hindi = transcribe_audio_with_timestamps(audio_path, task_id)
+            
+            # Analyze and get clips
+            if transcript and not transcript.startswith("Transcription error"):
+                clips = analyze_script_and_find_three_clips(transcript, video_duration, task_id)
+                
+                progress_tracker[task_id]['status'] = 'clipping'
+                progress_tracker[task_id]['progress'] = 85
+                progress_tracker[task_id]['message'] = 'Creating AI-powered clips...'
+                
+                created_clips = []
+                for i, clip in enumerate(clips):
+                    clip_filename = f"{video_id}_{i+1}_AI_clip.mp4"
+                    clip_path = create_vertical_clip(video_path, clip['start_time'], clip['end_time'], clip_filename, task_id)
+                    
+                    if clip_path:
+                        clip['filename'] = clip_filename
+                        clip['processed'] = True
+                        created_clips.append(clip)
+                    else:
+                        clip['filename'] = None
+                        clip['processed'] = False
+                        created_clips.append(clip)
+                
+                progress_tracker[task_id]['result'] = {'clips': created_clips, 'video_title': video_title}
+            else:
+                progress_tracker[task_id]['status'] = 'error'
+                progress_tracker[task_id]['message'] = transcript if transcript else 'Transcription failed'
+                return
 
-        # Get video info for title and ID
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_title = info.get('title', 'Unknown Video')
-            video_id = info.get('id', 'unknown')
-            video_duration = info.get('duration', 0)
-        
-        # Detect language and transcribe with timestamps
-        transcript, language, is_hindi = transcribe_audio_with_timestamps(audio_path, task_id)
-        
-        # Analyze script and find 3 best clips
-        if transcript and not transcript.startswith("Transcription error") and not transcript.startswith("API rate limit"):
-            clips = analyze_script_and_find_three_clips(transcript, video_duration, task_id)
-            
+        # --- Manual Clipping Logic ---
+        elif clip_mode == 'manual':
             progress_tracker[task_id]['status'] = 'clipping'
-            progress_tracker[task_id]['progress'] = 85
-            progress_tracker[task_id]['message'] = 'Creating vertical clips...'
+            progress_tracker[task_id]['progress'] = 50
+            progress_tracker[task_id]['message'] = 'Creating your manual clip...'
             
-            # Create vertical clips
-            safe_title = "".join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-            safe_title = safe_title.replace(' ', '_')[:20]
+            # Normalize timestamps
+            start_s = _from_seconds_to_hhmmss(_to_seconds(start_time))
+            end_s = _from_seconds_to_hhmmss(_to_seconds(end_time))
             
-            created_clips = []
-            for i, clip in enumerate(clips):
-                clip_filename = f"{video_id}_{safe_title}_clip{i+1}_9x16.mp4"
-                clip_path = create_vertical_clip(video_path, clip['start_time'], clip['end_time'], clip_filename, task_id)
-                
-                if clip_path:
-                    created_clips.append({
-                        'start_time': clip['start_time'],
-                        'end_time': clip['end_time'],
-                        'score': clip['score'],
-                        'reason': clip['reason'],
-                        'filename': clip_filename,
-                        'processed': True
-                    })
-                else:
-                    # If clip creation failed, add a placeholder.
-                    print(f"Warning: Failed to create clip {i+1}, adding placeholder.")
-                    created_clips.append({
-                        'start_time': clip['start_time'],
-                        'end_time': clip['end_time'],
-                        'score': clip['score'],
-                        'reason': clip['reason'] + " (Processing failed)",
-                        'filename': None,
-                        'processed': False
-                    })
-                
-                # Update progress for each clip
-                progress = 85 + ((i + 1) / 3) * 15
-                progress_tracker[task_id]['progress'] = min(99, progress)
-                progress_tracker[task_id]['message'] = f'Created clip {i + 1}/3...'
+            clip_filename = f"{video_id}_manual_clip.mp4"
+            clip_path = create_vertical_clip(video_path, start_s, end_s, clip_filename, task_id)
             
-            print(f"Final clips generated: {len(created_clips)}")
-            progress_tracker[task_id]['progress'] = 100
-            progress_tracker[task_id]['status'] = 'completed'
-            progress_tracker[task_id]['message'] = 'All clips created successfully!'
-            progress_tracker[task_id]['result'] = {
-                'clips': created_clips,
-                'video_title': video_title
-            }
-        else:
-            progress_tracker[task_id]['status'] = 'error'
-            progress_tracker[task_id]['message'] = transcript if transcript else 'Transcription failed'
-            
+            if clip_path:
+                manual_clip = {
+                    'start_time': start_s,
+                    'end_time': end_s,
+                    'score': 'Manual',
+                    'reason': 'Manually selected time range.',
+                    'filename': clip_filename,
+                    'processed': True,
+                }
+                progress_tracker[task_id]['result'] = {'clips': [manual_clip], 'video_title': video_title}
+            else:
+                progress_tracker[task_id]['status'] = 'error'
+                progress_tracker[task_id]['message'] = 'Failed to create manual clip.'
+                return
+
+        progress_tracker[task_id]['progress'] = 100
+        progress_tracker[task_id]['status'] = 'completed'
+        progress_tracker[task_id]['message'] = 'Your clips are ready!'
+
     except Exception as e:
         progress_tracker[task_id]['status'] = 'error'
         progress_tracker[task_id]['message'] = f'An unexpected error occurred: {str(e)}'
@@ -501,6 +539,10 @@ def process_video_task(url, task_id):
 def index():
     if request.method == 'POST':
         url = request.form.get('youtube_url')
+        clip_mode = request.form.get('clip_mode', 'ai')
+        start_time = request.form.get('start_time')
+        end_time = request.form.get('end_time')
+
         if not url:
             return jsonify({'error': 'Please provide a YouTube link.'})
         
@@ -514,7 +556,7 @@ def index():
         }
         
         # Start background processing
-        thread = threading.Thread(target=process_video_task, args=(url, task_id))
+        thread = threading.Thread(target=process_video_task, args=(url, task_id, clip_mode, start_time, end_time))
         thread.daemon = True
         thread.start()
         
