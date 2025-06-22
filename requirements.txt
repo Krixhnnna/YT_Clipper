@@ -1,0 +1,10 @@
+flask==2.3.3
+yt-dlp==2023.7.6
+google-generativeai==0.3.1
+google-cloud-translate==3.11.1
+
+# Note: FFmpeg is required for video processing
+# Install FFmpeg:
+# macOS: brew install ffmpeg
+# Ubuntu: sudo apt install ffmpeg
+# Windows: Download from https://ffmpeg.org/download.html 

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clipper.ai - AI Video Clipper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b69 50%, #1a0b2e 100%);
+            height: 100vh;
+            color: #ffffff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            font-size: 4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: -2px;
+        }
+
+        .tagline {
+            font-size: 1.1rem;
+            color: #c4b5fd;
+            font-weight: 400;
+            opacity: 0.8;
+        }
+
+        .main-content {
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .input-section {
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        .input-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .url-input {
+            width: 100%;
+            padding: 20px 25px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(168, 85, 247, 0.3);
+            border-radius: 20px;
+            font-size: 16px;
+            color: #ffffff;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(168, 85, 247, 0.1);
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #a855f7;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
+            backdrop-filter: blur(30px);
+        }
+
+        .url-input::placeholder {
+            color: #a78bfa;
+            opacity: 0.7;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+            border: none;
+            border-radius: 20px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(168, 85, 247, 0.3);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(168, 85, 247, 0.4);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-section {
+            display: none;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        .progress-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .progress-percentage {
+            font-size: 3.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .progress-message {
+            color: #c4b5fd;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .clips-section {
+            display: none;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .clips-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            width: 100%;
+        }
+
+        .clip-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .clip-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(168, 85, 247, 0.4);
+            box-shadow: 0 10px 40px rgba(168, 85, 247, 0.2);
+        }
+
+        .viral-score {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 700;
+            z-index: 2;
+        }
+
+        .video-container {
+            position: relative;
+            margin-bottom: 15px;
+            border-radius: 15px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .video-player {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 15px;
+        }
+
+        .clip-info {
+            margin-bottom: 15px;
+        }
+
+        .clip-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .clip-duration {
+            font-size: 12px;
+            color: #a78bfa;
+            opacity: 0.8;
+        }
+
+        .clip-reason {
+            font-size: 12px;
+            color: #c4b5fd;
+            line-height: 1.4;
+            margin-bottom: 15px;
+        }
+
+        .download-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 12px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1200px) {
+            .clips-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .logo {
+                font-size: 2.5rem;
+            }
+            
+            .clips-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .progress-percentage {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Clipper.ai</div>
+            <div class="tagline">AI-Powered Viral Video Clipping</div>
+        </div>
+
+        <div class="main-content">
+            <div class="input-section">
+                <form id="clipForm">
+                    <div class="input-container">
+                        <input type="url" 
+                               class="url-input" 
+                               name="youtube_url" 
+                               id="youtube_url"
+                               placeholder="Paste YouTube URL here..." 
+                               required>
+                    </div>
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        <span id="btnText">🎬 Generate Viral Clips</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-container">
+                    <div class="progress-percentage" id="progressPercentage">0%</div>
+                    <div class="progress-message" id="progressMessage">Initializing...</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <div class="error" id="errorMessage" style="display: none;"></div>
+
+            <div class="clips-section" id="clipsSection">
+                <div class="clips-grid" id="clipsGrid">
+                    <!-- Clips will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let progressInterval = null;
+
+        document.getElementById('clipForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const url = document.getElementById('youtube_url').value;
+            if (!url) {
+                showError('Please provide a YouTube URL');
+                return;
+            }
+
+            // Show progress and hide other sections
+            showProgress();
+            hideError();
+            hideClips();
+
+            // Update button
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            submitBtn.disabled = true;
+            btnText.innerHTML = '<span class="loading-spinner"></span>Processing...';
+
+            // Send request to start processing
+            fetch('/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `youtube_url=${encodeURIComponent(url)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    resetButton();
+                } else if (data.task_id) {
+                    currentTaskId = data.task_id;
+                    startProgressTracking();
+                }
+            })
+            .catch(error => {
+                showError('Network error: ' + error.message);
+                resetButton();
+            });
+        });
+
+        function startProgressTracking() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+
+            progressInterval = setInterval(() => {
+                if (!currentTaskId) return;
+
+                fetch(`/progress/${currentTaskId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showError(data.error);
+                            stopProgressTracking();
+                            resetButton();
+                            return;
+                        }
+
+                        updateProgress(data.progress, data.message, data.status);
+
+                        if (data.status === 'completed' && data.result) {
+                            stopProgressTracking();
+                            showClips(data.result);
+                            resetButton();
+                        } else if (data.status === 'error') {
+                            stopProgressTracking();
+                            showError(data.message);
+                            resetButton();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Progress tracking error:', error);
+                    });
+            }, 1000);
+        }
+
+        function updateProgress(progress, message, status) {
+            const progressPercentage = document.getElementById('progressPercentage');
+            const progressMessage = document.getElementById('progressMessage');
+            const progressFill = document.getElementById('progressFill');
+
+            progressPercentage.textContent = Math.round(progress) + '%';
+            progressMessage.textContent = message;
+            progressFill.style.width = progress + '%';
+        }
+
+        function showClips(result) {
+            const clipsSection = document.getElementById('clipsSection');
+            const clipsGrid = document.getElementById('clipsGrid');
+
+            // Clear existing clips
+            clipsGrid.innerHTML = '';
+
+            // Create clip cards
+            result.clips.forEach((clip, index) => {
+                const clipCard = document.createElement('div');
+                clipCard.className = 'clip-card';
+                
+                clipCard.innerHTML = `
+                    <div class="viral-score">${clip.score}/100</div>
+                    <div class="video-container">
+                        <video class="video-player" controls>
+                            <source src="/video/${clip.filename}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+                    <div class="clip-info">
+                        <div class="clip-title">Viral Clip ${index + 1}</div>
+                        <div class="clip-duration">${clip.start_time} - ${clip.end_time}</div>
+                    </div>
+                    <div class="clip-reason">${clip.reason}</div>
+                    <a href="/download/${clip.filename}" class="download-btn">
+                        📥 Download
+                    </a>
+                `;
+
+                clipsGrid.appendChild(clipCard);
+            });
+
+            // Show clips section
+            clipsSection.style.display = 'block';
+            hideProgress();
+        }
+
+        function showProgress() {
+            document.getElementById('progressSection').style.display = 'block';
+        }
+
+        function hideProgress() {
+            document.getElementById('progressSection').style.display = 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        function hideClips() {
+            document.getElementById('clipsSection').style.display = 'none';
+        }
+
+        function stopProgressTracking() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+            currentTaskId = null;
+        }
+
+        function resetButton() {
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            submitBtn.disabled = false;
+            btnText.textContent = '🎬 Generate Viral Clips';
+        }
+    </script>
+</body>
+</html> 
