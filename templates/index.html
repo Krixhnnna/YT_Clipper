@@ -14,9 +14,9 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: linear-gradient(135deg, #1a0b2e 0%, #2d1b69 50%, #1a0b2e 100%);
-            height: 100vh;
+            min-height: 100vh;
             color: #ffffff;
-            overflow: hidden;
+            overflow-y: auto;
             position: relative;
         }
 
@@ -30,10 +30,11 @@
             background: radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
                         radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%);
             pointer-events: none;
+            z-index: -1;
         }
 
         .container {
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -205,11 +206,13 @@
             display: none;
             width: 100%;
             max-width: 1200px;
+            margin-top: 20px;
+            padding-bottom: 40px;
         }
 
         .clips-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 30px;
             width: 100%;
         }
@@ -246,17 +249,38 @@
 
         .video-container {
             position: relative;
+            width: 100%;
+            padding-top: 177.77%; /* 9:16 Aspect Ratio */
             margin-bottom: 15px;
             border-radius: 15px;
             overflow: hidden;
             background: #000;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.3); /* Glowing edge */
         }
-
-        .video-player {
+        
+        .video-container video,
+        .video-container .video-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            height: 200px;
+            height: 100%;
             object-fit: cover;
             border-radius: 15px;
+        }
+
+        .video-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #a78bfa;
+            text-align: center;
+        }
+
+        .video-placeholder .emoji {
+            font-size: 40px;
+            margin-bottom: 10px;
         }
 
         .clip-info {
@@ -281,11 +305,12 @@
             color: #c4b5fd;
             line-height: 1.4;
             margin-bottom: 15px;
+            min-height: 40px;
         }
 
         .download-btn {
             width: 100%;
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
             color: white;
             padding: 12px;
             border: none;
@@ -301,7 +326,15 @@
 
         .download-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 8px 25px rgba(168, 85, 247, 0.3);
+        }
+        
+        .download-btn.disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            opacity: 0.5;
+            box-shadow: none;
+            transform: none;
         }
 
         .error {
@@ -330,23 +363,15 @@
             to { transform: rotate(360deg); }
         }
 
-        @media (max-width: 1200px) {
-            .clips-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
+                justify-content: flex-start;
+                padding-top: 60px;
             }
             
             .logo {
                 font-size: 2.5rem;
-            }
-            
-            .clips-grid {
-                grid-template-columns: 1fr;
             }
             
             .progress-percentage {
@@ -496,37 +521,48 @@
         function showClips(result) {
             const clipsSection = document.getElementById('clipsSection');
             const clipsGrid = document.getElementById('clipsGrid');
+            clipsGrid.innerHTML = ''; // Clear existing clips
 
-            // Clear existing clips
-            clipsGrid.innerHTML = '';
-
-            // Create clip cards
             result.clips.forEach((clip, index) => {
                 const clipCard = document.createElement('div');
                 clipCard.className = 'clip-card';
                 
-                clipCard.innerHTML = `
-                    <div class="viral-score">${clip.score}/100</div>
-                    <div class="video-container">
-                        <video class="video-player" controls>
+                let videoContent;
+                if (clip.processed && clip.filename) {
+                    videoContent = `
+                        <video class="video-player" controls preload="metadata">
                             <source src="/video/${clip.filename}" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
+                    `;
+                } else {
+                    videoContent = `
+                        <div class="video-placeholder">
+                            <div class="emoji">🚫</div>
+                            <div>Processing Failed</div>
+                        </div>
+                    `;
+                }
+
+                const downloadButton = (clip.processed && clip.filename)
+                    ? `<a href="/download/${clip.filename}" class="download-btn">📥 Download</a>`
+                    : `<a class="download-btn disabled" onclick="return false;">📥 Download</a>`;
+
+                clipCard.innerHTML = `
+                    <div class="viral-score">${clip.score}/100</div>
+                    <div class="video-container">
+                        ${videoContent}
                     </div>
                     <div class="clip-info">
                         <div class="clip-title">Viral Clip ${index + 1}</div>
                         <div class="clip-duration">${clip.start_time} - ${clip.end_time}</div>
                     </div>
                     <div class="clip-reason">${clip.reason}</div>
-                    <a href="/download/${clip.filename}" class="download-btn">
-                        📥 Download
-                    </a>
+                    ${downloadButton}
                 `;
-
                 clipsGrid.appendChild(clipCard);
             });
 
-            // Show clips section
             clipsSection.style.display = 'block';
             hideProgress();
         }

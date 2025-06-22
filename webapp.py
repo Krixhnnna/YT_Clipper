@@ -34,6 +34,28 @@ except:
 # Global progress tracking
 progress_tracker = {}
 
+# Helper functions for timestamp normalization
+def _to_seconds(time_str):
+    """Converts HH:MM:SS or MM:SS into total seconds, robustly."""
+    try:
+        time_str = time_str.split('.')[0]  # Remove milliseconds
+        parts = [int(p) for p in time_str.split(':')]
+        seconds = 0
+        if len(parts) == 3:  # HH:MM:SS
+            seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 2:  # MM:SS
+            seconds = parts[0] * 60 + parts[1]
+        return seconds
+    except (ValueError, IndexError):
+        return 0 # Return 0 if format is unexpected
+
+def _from_seconds_to_hhmmss(seconds):
+    """Converts total seconds into HH:MM:SS format for FFmpeg."""
+    s = int(seconds)
+    h, s = divmod(s, 3600)
+    m, s = divmod(s, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
 def download_youtube_video(url, output_dir, task_id):
     """Download YouTube video as mp4 to output_dir, return file path."""
     progress_tracker[task_id] = {'status': 'downloading', 'progress': 0, 'message': 'Starting download...'}
@@ -67,74 +89,90 @@ def update_progress(task_id, d):
             except:
                 pass
 
-def detect_language_and_transcribe_with_timestamps(video_path, task_id, max_retries=3):
-    """Detect if video is in Hindi and transcribe with timestamps."""
+def extract_audio(video_path, task_id):
+    """Extracts audio from video and returns the path to the audio file."""
+    progress_tracker[task_id]['message'] = 'Extracting audio...'
+    progress_tracker[task_id]['progress'] = 26 # After download (25%)
+    try:
+        audio_path = video_path.with_suffix('.mp3')
+        cmd = [
+            'ffmpeg', '-i', str(video_path),
+            '-q:a', '0', # best quality
+            '-map', 'a',
+            '-y', # overwrite
+            str(audio_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            print(f"FFmpeg audio extraction error: {result.stderr}")
+            return None
+        progress_tracker[task_id]['message'] = 'Audio extracted.'
+        progress_tracker[task_id]['progress'] = 30
+        return audio_path
+    except Exception as e:
+        print(f"Error extracting audio: {e}")
+        return None
+
+def transcribe_audio_with_timestamps(audio_path, task_id, max_retries=3):
+    """Transcribes audio using Gemini, handling language detection implicitly."""
     progress_tracker[task_id]['status'] = 'transcribing'
-    progress_tracker[task_id]['progress'] = 30
-    progress_tracker[task_id]['message'] = 'Detecting language...'
+    progress_tracker[task_id]['progress'] = 35
+    progress_tracker[task_id]['message'] = 'Preparing for transcription...'
+
+    if not audio_path:
+        progress_tracker[task_id]['status'] = 'error'
+        progress_tracker[task_id]['message'] = 'Audio extraction failed.'
+        return "Audio extraction failed.", "Error", False
     
     for attempt in range(max_retries):
         try:
-            # Read video file and encode to base64
-            progress_tracker[task_id]['message'] = 'Reading video file...'
-            with open(video_path, "rb") as video_file:
-                video_data = video_file.read()
-                video_base64 = base64.b64encode(video_data).decode('utf-8')
-            
-            # First, detect the language
-            progress_tracker[task_id]['message'] = 'Detecting language with AI...'
-            detection_prompt = """
-            Please analyze this video and determine if the primary spoken language is Hindi.
-            Respond with only 'HINDI' if Hindi is the main language, or 'ENGLISH' if it's English or any other language.
-            """
-            
-            detection_response = gemini_model.generate_content([
-                detection_prompt,
-                {
-                    "mime_type": "video/mp4",
-                    "data": video_base64
-                }
-            ])
-            
-            is_hindi = 'HINDI' in detection_response.text.upper()
-            progress_tracker[task_id]['progress'] = 45
+            progress_tracker[task_id]['message'] = f'Uploading audio for transcription (Attempt {attempt+1}/{max_retries})...'
+            with open(audio_path, "rb") as audio_file:
+                audio_data = audio_file.read()
+                audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+
             progress_tracker[task_id]['message'] = 'Transcribing with AI...'
-            
-            # Now transcribe with timestamps based on detected language
-            if is_hindi:
-                transcribe_prompt = """
-                This video is in Hindi. Please transcribe the Hindi speech and convert it to Hinglish (Hindi written in Latin script).
-                Include timestamps for each segment in format [MM:SS] or [MM:SS.MS].
-                Provide a clear, accurate transcription with timestamps.
-                Format example:
-                [00:05] Namaste, aaj hum baat karenge...
-                [00:12] Ye bahut important topic hai...
-                """
-                language = "Hinglish"
-            else:
-                transcribe_prompt = """
-                Please transcribe this video to English text with timestamps.
-                Include timestamps for each segment in format [MM:SS] or [MM:SS.MS].
-                Provide a clear, accurate transcription of all spoken content with timestamps.
-                Format example:
-                [00:05] Hello everyone, today we will discuss...
-                [00:12] This is a very important topic...
-                """
-                language = "English"
-            
-            transcription_response = gemini_model.generate_content([
-                transcribe_prompt,
+            progress_tracker[task_id]['progress'] = 45
+
+            prompt = """
+            Transcribe the following audio. Include timestamps for each segment in [MM:SS] or [MM:SS.MS] format.
+            If the spoken language is primarily Hindi, you MUST provide the transcription in Hinglish (Hindi written in the Roman/Latin alphabet).
+            For all other languages, provide the transcription in English.
+            At the very beginning of your response, you MUST indicate the detected language on a single line, like this:
+            LANGUAGE: [Hinglish/English]
+
+            Then, provide the full transcript. For example:
+
+            LANGUAGE: Hinglish
+            [00:05] Namaste, aaj hum baat karenge...
+            [00:12] Ye bahut important topic hai...
+            """
+
+            response = gemini_model.generate_content([
+                prompt,
                 {
-                    "mime_type": "video/mp4",
-                    "data": video_base64
+                    "mime_type": "audio/mp3",
+                    "data": audio_base64
                 }
             ])
+
+            response_text = response.text
             
+            # Determine language from response
+            language = "English"
+            is_hindi = False
+            if response_text.lower().startswith("language: hinglish"):
+                language = "Hinglish"
+                is_hindi = True
+
+            # Clean up the response to only include the transcript
+            transcript = re.sub(r'LANGUAGE:.*?\n', '', response_text, count=1).strip()
+
             progress_tracker[task_id]['progress'] = 60
             progress_tracker[task_id]['message'] = 'Transcription completed'
             
-            return transcription_response.text, language, is_hindi
-            
+            return transcript, language, is_hindi
+
         except Exception as e:
             error_str = str(e)
             
@@ -168,90 +206,161 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
     
     try:
         analysis_prompt = f"""
-        Analyze this transcript and find the 3 best clips that would be most engaging for social media.
-        
+        Analyze this transcript to find the 3 most viral-worthy clips for social media.
+
         Transcript:
         {transcript}
-        
-        For each clip, identify:
-        1. Start timestamp (MM:SS format)
-        2. End timestamp (MM:SS format)
-        3. Viral score out of 100 (based on engagement potential)
-        4. Brief reason why this clip is viral-worthy
-        
-        Choose clips that:
-        - Are between 15-45 seconds long
-        - Have high engagement potential
-        - Are self-contained and make sense on their own
-        - Have clear, impactful speech
-        - Would work well for social media sharing
-        
-        Respond in this exact format:
+
+        For each clip, you must identify:
+        1. A start timestamp (in MM:SS format)
+        2. An end timestamp (in MM:SS format)
+        3. A viral score (from 0-100) based on its potential to be engaging.
+        4. A brief, compelling reason why the clip is viral-worthy.
+
+        CRITICAL REQUIREMENTS:
+        - Each clip's duration MUST be between 16 and 60 seconds.
+        - Each clip MUST end at a natural stopping point (end of a sentence or a complete thought). Do NOT cut off a speaker mid-sentence.
+        - Prioritize moments with strong emotional cues, surprising statements, or valuable insights.
+
+        Respond in this exact format, with each field on a new line:
         CLIP1_START: [MM:SS]
         CLIP1_END: [MM:SS]
-        CLIP1_SCORE: [number 0-100]
-        CLIP1_REASON: [brief explanation]
-        
+        CLIP1_SCORE: [score]
+        CLIP1_REASON: [reason]
+
         CLIP2_START: [MM:SS]
         CLIP2_END: [MM:SS]
-        CLIP2_SCORE: [number 0-100]
-        CLIP2_REASON: [brief explanation]
-        
+        CLIP2_SCORE: [score]
+        CLIP2_REASON: [reason]
+
         CLIP3_START: [MM:SS]
         CLIP3_END: [MM:SS]
-        CLIP3_SCORE: [number 0-100]
-        CLIP3_REASON: [brief explanation]
+        CLIP3_SCORE: [score]
+        CLIP3_REASON: [reason]
         """
         
         response = gemini_model.generate_content(analysis_prompt)
         response_text = response.text
+        print(f"Gemini Analysis Response:\n---\n{response_text}\n---") # DEBUG
         
-        # Parse the response for 3 clips
         clips = []
         for i in range(1, 4):
-            start_match = re.search(f'CLIP{i}_START:\\s*\\[(\\d{{2}}:\\d{{2}})\\]', response_text)
-            end_match = re.search(f'CLIP{i}_END:\\s*\\[(\\d{{2}}:\\d{{2}})\\]', response_text)
+            start_match = re.search(f'CLIP{i}_START:\\s*\\[(.*?)\\]', response_text)
+            end_match = re.search(f'CLIP{i}_END:\\s*\\[(.*?)\\]', response_text)
             score_match = re.search(f'CLIP{i}_SCORE:\\s*\\[(\\d+)\\]', response_text)
-            reason_match = re.search(f'CLIP{i}_REASON:\\s*(.+)', response_text)
+            # Use a non-greedy match that stops at the next CLIP or end of string
+            reason_match = re.search(f'CLIP{i}_REASON:\\s*(.*?)(?=\\nCLIP|\\Z)', response_text, re.DOTALL)
             
             if start_match and end_match and score_match:
-                start_time = start_match.group(1)
-                end_time = end_match.group(1)
-                score = int(score_match.group(1))
-                reason = reason_match.group(1) if reason_match else f"Clip {i} selected for engagement"
-                
-                clips.append({
-                    'start_time': start_time,
-                    'end_time': end_time,
-                    'score': score,
-                    'reason': reason
-                })
-        
-        # If we don't get 3 clips, create fallback clips
-        while len(clips) < 3:
-            fallback_start = f"00:{30 + len(clips) * 15:02d}"
-            fallback_end = f"00:{45 + len(clips) * 15:02d}"
-            clips.append({
-                'start_time': fallback_start,
-                'end_time': fallback_end,
-                'score': 70 - len(clips) * 10,
-                'reason': f"Fallback clip {len(clips) + 1}"
-            })
-        
+                start_s = _to_seconds(start_match.group(1).strip())
+                end_s = _to_seconds(end_match.group(1).strip())
+
+                if start_s < end_s and 16 <= (end_s - start_s) <= 60:
+                    score = int(score_match.group(1))
+                    reason = reason_match.group(1).strip() if reason_match else f"Clip {i} selected for engagement"
+                    clips.append({
+                        'start_time': _from_seconds_to_hhmmss(start_s),
+                        'end_time': _from_seconds_to_hhmmss(end_s),
+                        'score': score,
+                        'reason': reason
+                    })
+
+        # If AI fails, use the new intelligent fallback
+        if len(clips) < 3:
+            print(f"AI returned only {len(clips)} valid clips. Using intelligent fallback.")
+            fallback_clips = find_best_segments_from_transcript(transcript, video_duration, num_clips=3 - len(clips))
+            clips.extend(fallback_clips)
+
         progress_tracker[task_id]['progress'] = 80
         progress_tracker[task_id]['message'] = 'Clip analysis completed'
         
-        return clips[:3]  # Ensure we return exactly 3 clips
+        return clips[:3]
             
     except Exception as e:
-        print(f"Error analyzing script: {e}")
-        progress_tracker[task_id]['message'] = 'Analysis failed, using fallback clips'
-        # Fallback: create 3 clips
-        return [
-            {'start_time': '00:30', 'end_time': '00:45', 'score': 75, 'reason': 'Fallback clip 1'},
-            {'start_time': '00:45', 'end_time': '01:00', 'score': 70, 'reason': 'Fallback clip 2'},
-            {'start_time': '01:00', 'end_time': '01:15', 'score': 65, 'reason': 'Fallback clip 3'}
-        ]
+        print(f"Error analyzing script: {e}. Using intelligent fallback.")
+        progress_tracker[task_id]['message'] = 'Analysis failed, using intelligent fallback'
+        return find_best_segments_from_transcript(transcript, video_duration, num_clips=3)
+
+def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
+    """A smarter fallback that finds good segments from the transcript."""
+    lines = transcript.strip().split('\n')
+    
+    segments = []
+    for line in lines:
+        match = re.match(r'\[(.*?)\]\s*(.*)', line)
+        if match:
+            timestamp_str, text = match.groups()
+            start_s = _to_seconds(timestamp_str)
+            segments.append({'start': start_s, 'text': text.strip()})
+    
+    if not segments:
+        return []
+
+    # Calculate end times based on the next segment's start
+    for i in range(len(segments) - 1):
+        segments[i]['end'] = segments[i+1]['start']
+    if segments:
+        segments[-1]['end'] = min(segments[-1]['start'] + 10, video_duration) # End of last segment
+
+    # Group segments into coherent passages based on punctuation
+    passages = []
+    current_passage = []
+    for seg in segments:
+        current_passage.append(seg)
+        if seg['text'].endswith(('.', '?', '!')) and len(current_passage) > 0:
+            passage_text = ' '.join([p['text'] for p in current_passage])
+            start_time = current_passage[0]['start']
+            end_time = current_passage[-1]['end']
+            duration = end_time - start_time
+            
+            if 16 <= duration <= 60:
+                passages.append({
+                    'text': passage_text,
+                    'start': start_time,
+                    'end': end_time,
+                    'duration': duration
+                })
+            current_passage = []
+
+    # Score passages to find the best ones
+    scored_passages = []
+    for passage in passages:
+        score = 50  # Base score for any valid fallback
+        # Add points for ideal duration (25-45s)
+        if 25 <= passage['duration'] <= 45:
+            score += 15
+        # Add points for length of text
+        score += min(10, len(passage['text']) // 20) # 1 point per 20 chars, max 10
+        # Add points for questions
+        if '?' in passage['text']:
+            score += 5
+        scored_passages.append({'passage': passage, 'score': score})
+    
+    # Sort by score and pick top non-overlapping clips
+    scored_passages.sort(key=lambda x: x['score'], reverse=True)
+    
+    final_clips = []
+    used_times = []
+
+    for item in scored_passages:
+        if len(final_clips) >= num_clips:
+            break
+        
+        start_t = item['passage']['start']
+        end_t = item['passage']['end']
+        
+        is_overlapping = any(max(start_t, s) < min(end_t, e) for s, e in used_times)
+        
+        if not is_overlapping:
+            final_clips.append({
+                'start_time': _from_seconds_to_hhmmss(start_t),
+                'end_time': _from_seconds_to_hhmmss(end_t),
+                'score': item['score'],
+                'reason': 'Intelligent fallback: A coherent segment was selected from the transcript.'
+            })
+            used_times.append((start_t, end_t))
+            
+    return final_clips
 
 def create_vertical_clip(input_video_path, start_time, end_time, output_filename, task_id):
     """Create a 9:16 vertical clip from the original video."""
@@ -264,7 +373,7 @@ def create_vertical_clip(input_video_path, start_time, end_time, output_filename
             'ffmpeg', '-i', str(input_video_path),
             '-ss', start_time,
             '-to', end_time,
-            '-vf', 'crop=ih*9/16:ih,scale=1080:1920',  # Crop to 9:16 and scale to 1080x1920
+            '-vf', 'crop=ih*9/16:ih,scale=1080:1920,setsar=1',  # Crop, scale, and set SAR
             '-c:v', 'libx264',
             '-c:a', 'aac',
             '-preset', 'fast',
@@ -273,24 +382,37 @@ def create_vertical_clip(input_video_path, start_time, end_time, output_filename
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         
         if result.returncode == 0:
             return output_path
         else:
-            print(f"FFmpeg error: {result.stderr}")
+            print(f"FFmpeg error for {output_filename}: {result.stderr}")
             return None
             
     except Exception as e:
-        print(f"Error creating vertical clip: {e}")
+        print(f"Error creating vertical clip for {output_filename}: {e}")
         return None
 
 def process_video_task(url, task_id):
     """Process video in background thread."""
+    video_path = None
+    audio_path = None
     try:
         # Download video
         video_path = download_youtube_video(url, OUTPUT_DIR, task_id)
-        
+        if not video_path:
+             progress_tracker[task_id]['status'] = 'error'
+             progress_tracker[task_id]['message'] = 'Failed to download video.'
+             return
+
+        # Extract audio
+        audio_path = extract_audio(video_path, task_id)
+        if not audio_path:
+            progress_tracker[task_id]['status'] = 'error'
+            progress_tracker[task_id]['message'] = 'Failed to extract audio.'
+            return
+
         # Get video info for title and ID
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -299,7 +421,7 @@ def process_video_task(url, task_id):
             video_duration = info.get('duration', 0)
         
         # Detect language and transcribe with timestamps
-        transcript, language, is_hindi = detect_language_and_transcribe_with_timestamps(video_path, task_id)
+        transcript, language, is_hindi = transcribe_audio_with_timestamps(audio_path, task_id)
         
         # Analyze script and find 3 best clips
         if transcript and not transcript.startswith("Transcription error") and not transcript.startswith("API rate limit"):
@@ -324,31 +446,56 @@ def process_video_task(url, task_id):
                         'end_time': clip['end_time'],
                         'score': clip['score'],
                         'reason': clip['reason'],
-                        'filename': clip_filename
+                        'filename': clip_filename,
+                        'processed': True
+                    })
+                else:
+                    # If clip creation failed, add a placeholder.
+                    print(f"Warning: Failed to create clip {i+1}, adding placeholder.")
+                    created_clips.append({
+                        'start_time': clip['start_time'],
+                        'end_time': clip['end_time'],
+                        'score': clip['score'],
+                        'reason': clip['reason'] + " (Processing failed)",
+                        'filename': None,
+                        'processed': False
                     })
                 
                 # Update progress for each clip
-                progress_tracker[task_id]['progress'] = 85 + ((i + 1) * 5)
+                progress = 85 + ((i + 1) / 3) * 15
+                progress_tracker[task_id]['progress'] = min(99, progress)
                 progress_tracker[task_id]['message'] = f'Created clip {i + 1}/3...'
             
-            if created_clips:
-                progress_tracker[task_id]['progress'] = 100
-                progress_tracker[task_id]['status'] = 'completed'
-                progress_tracker[task_id]['message'] = 'All clips created successfully!'
-                progress_tracker[task_id]['result'] = {
-                    'clips': created_clips,
-                    'video_title': video_title
-                }
-            else:
-                progress_tracker[task_id]['status'] = 'error'
-                progress_tracker[task_id]['message'] = 'Failed to create clips'
+            print(f"Final clips generated: {len(created_clips)}")
+            progress_tracker[task_id]['progress'] = 100
+            progress_tracker[task_id]['status'] = 'completed'
+            progress_tracker[task_id]['message'] = 'All clips created successfully!'
+            progress_tracker[task_id]['result'] = {
+                'clips': created_clips,
+                'video_title': video_title
+            }
         else:
             progress_tracker[task_id]['status'] = 'error'
             progress_tracker[task_id]['message'] = transcript if transcript else 'Transcription failed'
             
     except Exception as e:
         progress_tracker[task_id]['status'] = 'error'
-        progress_tracker[task_id]['message'] = f'Error: {str(e)}'
+        progress_tracker[task_id]['message'] = f'An unexpected error occurred: {str(e)}'
+        print(f"Error in process_video_task: {e}")
+    finally:
+        # Clean up the original downloaded video and audio files
+        if video_path and video_path.exists():
+            try:
+                os.remove(video_path)
+                print(f"Cleaned up original video: {video_path}")
+            except OSError as e:
+                print(f"Error removing original video file {video_path}: {e}")
+        if audio_path and audio_path.exists():
+            try:
+                os.remove(audio_path)
+                print(f"Cleaned up temporary audio file: {audio_path}")
+            except OSError as e:
+                print(f"Error removing audio file {audio_path}: {e}")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
