@@ -19,7 +19,7 @@ OUTPUT_DIR = Path('output')
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Configure Gemini AI
-GEMINI_API_KEY = "AIzaSyDT0VLpFKwJvhcmiBNYzQhnm2Ohmzg4e-U"
+GEMINI_API_KEY = "YOUR API KEY HERE"
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize Gemini model
