@@ -1,0 +1,93 @@
+⚠️  Warning: GOOGLE_APPLICATION_CREDENTIALS not set. Hinglish translation may not work.
+   Set up Google Cloud credentials for translation features.
+🚀 Starting Clipper.ai - AI Video Clipper...
+📝 Using Gemini API Key: AIzaSyDT0V...
+🌐 Web app will be available at: http://localhost:8080
+💾 Videos will be saved to: /output folder
+🎯 Smart language detection: Hindi → Hinglish, Others → English
+📱 Auto-creates 3 viral clips with scores
+⚠️  Note: Free tier has rate limits. If you hit limits, wait a few minutes and try again.
+ * Serving Flask app 'webapp'
+ * Debug mode: on
+[download]   0.0% of   16.87MiB at  624.99KiB/s ETA 00:27⚠️  Warning: GOOGLE_APPLICATION_CREDENTIALS not set. Hinglish translation may not work.
+   Set up Google Cloud credentials for translation features.
+🚀 Starting Clipper.ai - AI Video Clipper...
+📝 Using Gemini API Key: AIzaSyDT0V...
+🌐 Web app will be available at: http://localhost:8080
+💾 Videos will be saved to: /output folder
+🎯 Smart language detection: Hindi → Hinglish, Others → English
+📱 Auto-creates 3 viral clips with scores
+⚠️  Note: Free tier has rate limits. If you hit limits, wait a few minutes and try again.
+[DEBUG] /video/ requested: eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] /video/ requested: eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[download]   0.0% of   16.87MiB at    1.61MiB/s ETA 00:10[download]   0.0% of   16.87MiB at    1.78MiB/s ETA 00:09[download]   0.1% of   16.87MiB at  728.19KiB/s ETA 00:23[download]   0.2% of   16.87MiB at  954.25KiB/s ETA 00:18[download]   0.4% of   16.87MiB at    1.17MiB/s ETA 00:14[download]   0.7% of   16.87MiB at    1.18MiB/s ETA 00:14[download]   1.5% of   16.87MiB at    1.03MiB/s ETA 00:16[download]   3.0% of   16.87MiB at  863.78KiB/s ETA 00:19[download]   5.9% of   16.87MiB at  945.63KiB/s ETA 00:17[download]  11.9% of   16.87MiB at  994.82KiB/s ETA 00:15[download]  17.9% of   16.87MiB at    1.31MiB/s ETA 00:10[download]  30.1% of   16.87MiB at    1.95MiB/s ETA 00:06[download]  53.8% of   16.87MiB at    3.10MiB/s ETA 00:02[download]  58.1% of   16.87MiB at    3.29MiB/s ETA 00:02[download]  58.1% of   16.87MiB at  Unknown B/s ETA Unknown[download]  58.1% of   16.87MiB at    2.00MiB/s ETA 00:03  [download]  58.1% of   16.87MiB at    3.16MiB/s ETA 00:02[download]  58.2% of   16.87MiB at    5.72MiB/s ETA 00:01[download]  58.3% of   16.87MiB at   10.09MiB/s ETA 00:00[download]  58.5% of   16.87MiB at   15.46MiB/s ETA 00:00[download]  58.8% of   16.87MiB at    2.46MiB/s ETA 00:02[download]  59.6% of   16.87MiB at    3.68MiB/s ETA 00:01[download]  61.1% of   16.87MiB at    5.30MiB/s ETA 00:01[download]  64.0% of   16.87MiB at    6.36MiB/s ETA 00:00[download]  69.9% of   16.87MiB at    8.74MiB/s ETA 00:00[download]  81.8% of   16.87MiB at    9.27MiB/s ETA 00:00[download] 100.0% of   16.87MiB at    7.75MiB/s ETA 00:00[download] 100% of   16.87MiB in 00:00:04 at 4.02MiB/s                                                         Gemini Analysis Response:
+---
+CLIP1_START: 00:06
+CLIP1_END: 00:33
+CLIP1_SCORE: 90
+CLIP1_REASON: The captivating opening hook about the power of the human voice immediately grabs attention, and the intriguing introduction of "seven deadly sins of speaking" promises insightful content, creating a strong narrative arc.
+
+CLIP2_START: 03:37
+CLIP2_END: 04:50
+CLIP2_SCORE: 85
+CLIP2_REASON: The memorable acronym "HAIL" (Honesty, Authenticity, Integrity, Love) provides a simple yet powerful message about positive communication, making it easily shareable and relatable.
+
+CLIP3_START: 10:07
+CLIP3_END: 11:50
+CLIP3_SCORE: 75
+CLIP3_REASON:  The practical and engaging vocal warm-up exercises offer immediate value to viewers, encouraging interaction and participation, while the final reflection on conscious sound creation provides a thought-provoking conclusion.
+
+---
+AI returned 0 valid clips.
+Falling back to transcript-based segmenting. Need 3 more.
+Fallback returning 3 clips.
+Fallback produced 3 clips.
+Total clips returned: 3
+Cleaned up original video: output/eIho2S0ZahI.mp4
+Cleaned up temporary audio file: output/eIho2S0ZahI.mp3
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_2_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_3_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True
+[DEBUG] /video/ requested: eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] Resolved file path: output/eIho2S0ZahI_1_AI_clip.mp4
+[DEBUG] File exists: True | Is file: True

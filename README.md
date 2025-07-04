@@ -24,3 +24,4 @@ Visit `http://localhost:8080`
 - Python 3.8+
 - FFmpeg
 - Google Gemini API key
+ 

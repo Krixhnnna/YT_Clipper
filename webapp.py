@@ -203,7 +203,6 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
     progress_tracker[task_id]['status'] = 'analyzing'
     progress_tracker[task_id]['progress'] = 70
     progress_tracker[task_id]['message'] = 'Analyzing transcript for best clips...'
-    
     try:
         analysis_prompt = f"""
         Your task is to act as an expert social media video editor. Analyze the following transcript and identify the 3 best clips that have the highest potential to go viral.
@@ -239,23 +238,18 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
         CLIP3_SCORE: [score]
         CLIP3_REASON: [reason]
         """
-        
         response = gemini_model.generate_content(analysis_prompt)
         response_text = response.text
         print(f"Gemini Analysis Response:\n---\n{response_text}\n---") # DEBUG
-        
         clips = []
         for i in range(1, 4):
             start_match = re.search(f'CLIP{i}_START:\\s*\\[(.*?)\\]', response_text)
             end_match = re.search(f'CLIP{i}_END:\\s*\\[(.*?)\\]', response_text)
             score_match = re.search(f'CLIP{i}_SCORE:\\s*\\[(\\d+)\\]', response_text)
-            # Use a non-greedy match that stops at the next CLIP or end of string
             reason_match = re.search(f'CLIP{i}_REASON:\\s*(.*?)(?=\\nCLIP|\\Z)', response_text, re.DOTALL)
-            
             if start_match and end_match and score_match:
                 start_s = _to_seconds(start_match.group(1).strip())
                 end_s = _to_seconds(end_match.group(1).strip())
-
                 if start_s < end_s and 15 <= (end_s - start_s) <= 70:
                     score = int(score_match.group(1))
                     reason = reason_match.group(1).strip() if reason_match else f"Clip {i} selected for engagement"
@@ -265,27 +259,53 @@ def analyze_script_and_find_three_clips(transcript, video_duration, task_id):
                         'score': score,
                         'reason': reason
                     })
-
-        # If AI fails, use the new intelligent fallback
+        print(f"AI returned {len(clips)} valid clips.")
         if len(clips) < 3:
-            print(f"AI returned only {len(clips)} valid clips. Using intelligent fallback.")
+            print(f"Falling back to transcript-based segmenting. Need {3-len(clips)} more.")
             fallback_clips = find_best_segments_from_transcript(transcript, video_duration, num_clips=3 - len(clips))
+            print(f"Fallback produced {len(fallback_clips)} clips.")
+            # For fallback, do not assign a static score, mark as 'AI unavailable'
+            for fc in fallback_clips:
+                fc['score'] = 'AI unavailable'
+                fc['reason'] = fc.get('reason', '') + ' (AI viral score unavailable)'
             clips.extend(fallback_clips)
-
+        print(f"Total clips returned: {len(clips)}")
         progress_tracker[task_id]['progress'] = 80
         progress_tracker[task_id]['message'] = 'Clip analysis completed'
-        
+        # Always return 3 clips, fill with placeholders if needed
+        while len(clips) < 3:
+            clips.append({
+                'start_time': '--:--',
+                'end_time': '--:--',
+                'score': 'No score',
+                'reason': 'No clip found',
+                'filename': None,
+                'processed': False
+            })
         return clips[:3]
-            
     except Exception as e:
         print(f"Error analyzing script: {e}. Using intelligent fallback.")
         progress_tracker[task_id]['message'] = 'Analysis failed, using intelligent fallback'
-        return find_best_segments_from_transcript(transcript, video_duration, num_clips=3)
+        fallback_clips = find_best_segments_from_transcript(transcript, video_duration, num_clips=3)
+        print(f"Fallback produced {len(fallback_clips)} clips.")
+        for fc in fallback_clips:
+            fc['score'] = 'AI unavailable'
+            fc['reason'] = fc.get('reason', '') + ' (AI viral score unavailable)'
+        # Always return 3 clips, fill with placeholders if needed
+        while len(fallback_clips) < 3:
+            fallback_clips.append({
+                'start_time': '--:--',
+                'end_time': '--:--',
+                'score': 'No score',
+                'reason': 'No clip found',
+                'filename': None,
+                'processed': False
+            })
+        return fallback_clips[:3]
 
 def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
     """A smarter fallback that finds good segments from the transcript."""
     lines = transcript.strip().split('\n')
-    
     segments = []
     for line in lines:
         match = re.match(r'\[(.*?)\]\s*(.*)', line)
@@ -293,17 +313,12 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
             timestamp_str, text = match.groups()
             start_s = _to_seconds(timestamp_str)
             segments.append({'start': start_s, 'text': text.strip()})
-    
     if not segments:
         return []
-
-    # Calculate end times based on the next segment's start
     for i in range(len(segments) - 1):
         segments[i]['end'] = segments[i+1]['start']
     if segments:
-        segments[-1]['end'] = min(segments[-1]['start'] + 10, video_duration) # End of last segment
-
-    # Group segments into coherent passages based on punctuation
+        segments[-1]['end'] = min(segments[-1]['start'] + 10, video_duration)
     passages = []
     current_passage = []
     for seg in segments:
@@ -313,8 +328,7 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
             start_time = current_passage[0]['start']
             end_time = current_passage[-1]['end']
             duration = end_time - start_time
-            
-            if 15 <= duration <= 70: # Looser duration for fallback
+            if 15 <= duration <= 70:
                 passages.append({
                     'text': passage_text,
                     'start': start_time,
@@ -322,11 +336,9 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
                     'duration': duration
                 })
             current_passage = []
-
     if not passages:
-        # If no punctuation-based passages, use time-based chunks
         print("No punctuation-based passages found, creating time-based fallback chunks.")
-        for i in range(5): # Create 5 potential chunks
+        for i in range(5):
             start_s = (i * (video_duration / 5)) + 5
             end_s = start_s + 30
             if end_s < video_duration:
@@ -336,85 +348,101 @@ def find_best_segments_from_transcript(transcript, video_duration, num_clips=3):
                     'end': end_s,
                     'duration': end_s - start_s
                 })
-
-    # Score passages to find the best ones
     scored_passages = []
     for passage in passages:
-        score = 40  # Base score for any valid fallback
+        score = 40
         duration = passage['duration']
-        
-        # Add points for ideal duration (25-60s)
         if 25 <= duration <= 60:
             score += 20
         elif 15 <= duration < 25:
             score += 5
-        
-        # Add points for length of text
-        score += min(15, len(passage['text']) // 20) # 1 point per 20 chars, max 15
-        
-        # Add points for questions or keywords
+        score += min(15, len(passage['text']) // 20)
         if '?' in passage['text']: score += 10
         if any(keyword in passage['text'].lower() for keyword in ['because', 'secret', 'finally', 'imagine']): score += 5
-
         scored_passages.append({'passage': passage, 'score': score})
-    
-    # Sort by score and pick top non-overlapping clips
     scored_passages.sort(key=lambda x: x['score'], reverse=True)
-    
     final_clips = []
     used_times = []
-
     for item in scored_passages:
         if len(final_clips) >= num_clips:
             break
-        
         start_t = item['passage']['start']
         end_t = item['passage']['end']
-        
         is_overlapping = any(max(start_t, s) < min(end_t, e) for s, e in used_times)
-        
         if not is_overlapping:
             final_clips.append({
                 'start_time': _from_seconds_to_hhmmss(start_t),
                 'end_time': _from_seconds_to_hhmmss(end_t),
-                'score': min(item['score'], 99), # Cap score at 99
+                'score': min(item['score'], 99),
                 'reason': 'Intelligent fallback: A coherent segment was selected from the transcript.'
             })
             used_times.append((start_t, end_t))
-            
+    # If not enough, relax duration requirement for last clips
+    if len(final_clips) < num_clips:
+        print(f"Relaxing duration requirement to fill {num_clips - len(final_clips)} more clips.")
+        # Try to add shorter or longer passages
+        for passage in passages:
+            if len(final_clips) >= num_clips:
+                break
+            start_t = passage['start']
+            end_t = passage['end']
+            is_overlapping = any(max(start_t, s) < min(end_t, e) for s, e in used_times)
+            if not is_overlapping:
+                final_clips.append({
+                    'start_time': _from_seconds_to_hhmmss(start_t),
+                    'end_time': _from_seconds_to_hhmmss(end_t),
+                    'score': 30,
+                    'reason': 'Relaxed fallback: Segment from transcript.'
+                })
+                used_times.append((start_t, end_t))
+    print(f"Fallback returning {len(final_clips)} clips.")
     return final_clips
 
 def create_vertical_clip(input_video_path, start_time, end_time, output_filename, task_id):
-    """Create a 9:16 vertical clip from the original video."""
+    """Create a 9:16 vertical clip from the original video. If FFmpeg fails, try a shorter fallback segment."""
     try:
         output_path = OUTPUT_DIR / output_filename
-        
         # FFmpeg command to create 9:16 vertical clip
-        # Crop to center and resize to 9:16 aspect ratio
         cmd = [
             'ffmpeg', '-i', str(input_video_path),
             '-ss', start_time,
             '-to', end_time,
-            '-vf', 'crop=ih*9/16:ih,scale=1080:1920,setsar=1',  # Crop, scale, and set SAR
+            '-vf', 'crop=ih*9/16:ih,scale=1080:1920,setsar=1',
             '-c:v', 'libx264',
             '-c:a', 'aac',
             '-preset', 'fast',
             '-crf', '23',
-            '-y',  # Overwrite output file
+            '-y',
             str(output_path)
         ]
-        
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
         if result.returncode == 0:
-            return output_path
+            return output_path, None
         else:
-            print(f"FFmpeg error for {output_filename}: {result.stderr}")
-            return None
-            
+            # Try fallback: 20s segment from start_time
+            start_sec = _to_seconds(start_time)
+            end_sec = _to_seconds(end_time)
+            fallback_end = start_sec + 20
+            if fallback_end < end_sec:
+                fallback_end_str = _from_seconds_to_hhmmss(fallback_end)
+                fallback_cmd = [
+                    'ffmpeg', '-i', str(input_video_path),
+                    '-ss', start_time,
+                    '-to', fallback_end_str,
+                    '-vf', 'crop=ih*9/16:ih,scale=1080:1920,setsar=1',
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-preset', 'fast',
+                    '-crf', '23',
+                    '-y',
+                    str(output_path)
+                ]
+                fallback_result = subprocess.run(fallback_cmd, capture_output=True, text=True, check=False)
+                if fallback_result.returncode == 0:
+                    return output_path, f"FFmpeg failed for full segment, fallback 20s segment used. FFmpeg error: {result.stderr.strip()}"
+            return None, f"FFmpeg error: {result.stderr.strip()}"
     except Exception as e:
-        print(f"Error creating vertical clip for {output_filename}: {e}")
-        return None
+        return None, f"Error creating vertical clip: {e}"
 
 def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
     """Process video in background thread for either AI or manual clipping."""
@@ -423,7 +451,7 @@ def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
     try:
         # Step 1: Get video info first to check duration
         progress_tracker[task_id]['status'] = 'validating'
-        progress_tracker[task_id]['progress'] = 2
+        progress_tracker[task_id]['progress'] = 0 # Start at 0 to prevent flicker
         progress_tracker[task_id]['message'] = 'Analyzing video link...'
         
         with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
@@ -467,18 +495,20 @@ def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
                 created_clips = []
                 for i, clip in enumerate(clips):
                     clip_filename = f"{video_id}_{i+1}_AI_clip.mp4"
-                    clip_path = create_vertical_clip(video_path, clip['start_time'], clip['end_time'], clip_filename, task_id)
-                    
+                    clip_path, ffmpeg_error = create_vertical_clip(video_path, clip['start_time'], clip['end_time'], clip_filename, task_id)
                     if clip_path:
                         clip['filename'] = clip_filename
                         clip['processed'] = True
+                        if ffmpeg_error:
+                            clip['reason'] += f" (Partial fallback: {ffmpeg_error})"
                         created_clips.append(clip)
                     else:
                         clip['filename'] = None
                         clip['processed'] = False
+                        clip['reason'] += f" (Clip failed: {ffmpeg_error})"
                         created_clips.append(clip)
                 
-                progress_tracker[task_id]['result'] = {'clips': created_clips, 'video_title': video_title}
+                progress_tracker[task_id]['result'] = {'clips': created_clips, 'video_title': video_title, 'original_video': video_path.name}
             else:
                 progress_tracker[task_id]['status'] = 'error'
                 progress_tracker[task_id]['message'] = transcript if transcript else 'Transcription failed'
@@ -495,7 +525,7 @@ def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
             end_s = _from_seconds_to_hhmmss(_to_seconds(end_time))
             
             clip_filename = f"{video_id}_manual_clip.mp4"
-            clip_path = create_vertical_clip(video_path, start_s, end_s, clip_filename, task_id)
+            clip_path, ffmpeg_error = create_vertical_clip(video_path, start_s, end_s, clip_filename, task_id)
             
             if clip_path:
                 manual_clip = {
@@ -506,6 +536,8 @@ def process_video_task(url, task_id, clip_mode, start_time=None, end_time=None):
                     'filename': clip_filename,
                     'processed': True,
                 }
+                if ffmpeg_error:
+                    manual_clip['reason'] += f" (Clip failed: {ffmpeg_error})"
                 progress_tracker[task_id]['result'] = {'clips': [manual_clip], 'video_title': video_title}
             else:
                 progress_tracker[task_id]['status'] = 'error'
@@ -552,7 +584,8 @@ def index():
             'status': 'starting',
             'progress': 0,
             'message': 'Initializing...',
-            'result': None
+            'result': None,
+            'start_time': time.time()
         }
         
         # Start background processing
@@ -568,7 +601,23 @@ def index():
 def get_progress(task_id):
     """Get progress for a specific task."""
     if task_id in progress_tracker:
-        return jsonify(progress_tracker[task_id])
+        progress_data = progress_tracker[task_id]
+        
+        # Calculate ETA
+        progress = progress_data.get('progress', 0)
+        start_time = progress_data.get('start_time')
+        eta_seconds = None
+        
+        if start_time and progress > 5 and progress < 99: # Only show between 5% and 99%
+            elapsed = time.time() - start_time
+            # Avoid division by zero
+            if progress > 0:
+                total_time = (elapsed / progress) * 100
+                eta_seconds = total_time - elapsed
+        
+        response_data = progress_data.copy()
+        response_data['eta'] = eta_seconds
+        return jsonify(response_data)
     else:
         return jsonify({'error': 'Task not found'})
 

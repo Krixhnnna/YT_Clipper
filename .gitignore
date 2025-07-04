@@ -1,0 +1,10 @@
+# Ignore the output directory where generated videos are stored
+/output/
+
+# Ignore Python virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Ignore OS-specific files
+.DS_Store 
