@@ -78,21 +78,37 @@
             color: #111;
         }
         .main-content {
-            max-width: 520px;
+            max-width: 650px;
+            width: 100%;
             margin: 48px auto 0 auto;
             background: #fff;
             border: 4px solid #111;
-            border-radius: 18px;
-            box-shadow: 0 4px 24px 0 rgba(16, 22, 36, 0.10);
-            padding: 48px 32px 32px 32px;
+            border-radius: 22px;
+            box-shadow: 0 8px 40px 0 rgba(16, 22, 36, 0.13);
+            padding: 56px 32px 48px 32px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
+        @media (max-width: 900px) {
+            .main-content {
+                max-width: 98vw;
+                padding: 32px 6vw 32px 6vw;
+                border-radius: 16px;
+            }
+        }
+        @media (max-width: 600px) {
+            .main-content {
+                max-width: 100vw;
+                padding: 18px 2vw 18px 2vw;
+                border-radius: 10px;
+                box-shadow: 0 2px 12px 0 rgba(16, 22, 36, 0.10);
+            }
+        }
         .main-content h1 {
-            font-size: 2.6rem;
+            font-size: 2.2rem;
             font-weight: 900;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             letter-spacing: -1px;
             color: #111;
             font-family: 'Montserrat', 'Inter', sans-serif;
@@ -100,49 +116,63 @@
         }
         .main-content .subtitle {
             color: #444;
-            font-size: 1.2rem;
-            margin-bottom: 32px;
+            font-size: 1.15rem;
+            margin-bottom: 36px;
             text-align: center;
             font-family: 'Inter', 'Montserrat', sans-serif;
         }
         .input-section {
-            margin-bottom: 32px;
+            margin-bottom: 36px;
             width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
         }
-        .url-input {
+        .url-input, #start_time, #end_time {
             width: 100%;
-            padding: 20px 18px;
+            padding: 22px 20px;
             border-radius: 12px;
-            border: 4px solid #111;
-            font-size: 1.15rem;
-            margin-bottom: 18px;
+            border: 3px solid #111;
+            font-size: 1.18rem;
+            margin-bottom: 22px;
             background: #fafafa;
             color: #111;
             font-family: 'Inter', 'Montserrat', sans-serif;
             outline: none;
             font-weight: 700;
             transition: border 0.2s;
+            box-sizing: border-box;
         }
-        .url-input:focus {
+        .url-input:focus, #start_time:focus, #end_time:focus {
             border-color: #ffd600;
         }
         .clipping-options {
             display: flex;
-            gap: 16px;
-            margin-bottom: 18px;
+            gap: 0;
+            margin-bottom: 22px;
+            width: 100%;
         }
         .option-btn {
-            flex: 1;
-            padding: 16px 0;
-            font-size: 1.15rem;
+            width: 50%;
+            padding: 20px 0;
+            font-size: 1.18rem;
             font-weight: 900;
-            border-radius: 12px;
-            border: 4px solid #111;
+            border-radius: 0;
+            border: 3px solid #111;
             background: #fff;
             color: #111;
             font-family: 'Montserrat', 'Inter', sans-serif;
             transition: background 0.18s, border 0.18s, color 0.18s;
             cursor: pointer;
+        }
+        .option-btn:first-child {
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+        }
+        .option-btn:last-child {
+            border-top-right-radius: 12px;
+            border-bottom-right-radius: 12px;
+            border-left: none;
         }
         .option-btn.active, .option-btn:focus, .option-btn:hover {
             background: #ffd600;
@@ -151,12 +181,12 @@
         }
         .submit-btn {
             width: 100%;
-            margin-top: 12px;
-            padding: 20px 0;
-            font-size: 1.25rem;
+            margin-top: 16px;
+            padding: 22px 0;
+            font-size: 1.22rem;
             font-weight: 900;
             border-radius: 12px;
-            border: 4px solid #111;
+            border: 3px solid #111;
             background: #00ff47;
             color: #111;
             letter-spacing: 0.01em;
